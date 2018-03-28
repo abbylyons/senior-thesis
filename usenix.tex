@@ -47,6 +47,50 @@ With the ending of Moore's Law, people are increasingly turning to other ways to
 \pagebreak
 
 \section{Introduction}
+
+The introduction needs to tell the story of:
+
+1. A richer description of the problem than is in the abstract (the story line is in the abstract, but it needs to be fleshed out).
+
+2. The story goes something like:
+
+Hardware is proliferating
+
+Hardware platforms need operating systems
+
+Operating systems are challenging and tedious to port
+
+If we could describe hardware platforms in a sufficiently rich way we could synthesize them
+
+There are lots of different ways to describe HW
+
+We need a way that satisfies these requirements
+
+However, writing those descriptions is challenging — better than having to port every piece of MD software, but challenging nonetheless.
+
+So, if this is all going to work, we need a way to make sure those descriptions are correct.
+
+How might you do that/
+
+Well, if you could generate tests to run on the real hardware and could figure out a way to determine if the results of that execution were what the description said it was, that would be awesome.
+
+So, we’re going to that awesome thing.
+
+\subsection{Contributions}
+
+This paper presents a testing methodology for machine descriptions that generates the test suite from scratch. First, the paper describes a design and implementation of a program that can run equivalent instructions on a virtual test machine and a Cassiopeia interpreter and directly compare the resulting states. Second, it details a method of generating randomized tests from scratch, pruning the random tests for validity, and selecting important corner cases to catch common errors. And lastly, it shows that this testing method reveals programmer errors in a Cassiopeia machine description of an ARM processor.
+
+The rest of this thesis is structured as follows:
+
+In Chapter 2, we provide some background on the key infrastructure pieces on which this work depends
+
+In Chapter 3, we describe the test infrastructure we built
+
+In Chapter 4, we demonstrate the infrastructure on the ARM processor
+
+In Chapter 5 we conclude
+
+\section{Background}
 \subsection{Machine Descriptions}
 
 A machine description language is any language that describes hardware. Hardware description languages (HDLs), such as Verilog, describe properties of machines and are commonly used when designing digital circuits, and as such they fit this general definition. However, in this paper I will instead focus on semantic machine description languages, which describe at a high level how each instruction changes the state of a machine \cite{Design}. A semantic machine description language consists of two main components. The first is a state definition, which defines what types are available, the number of registers and their types, flag bits, the amount of memory available, and possibly even more information describing the machine's state. The second component is the instruction definitions, which define instructions like shift right, add, etc. in terms of how the machine's state changes. When testing a completely accurate machine description, the values in the defined state should always match the actual state of the machine it's describing.
@@ -130,9 +174,9 @@ Cassiopeia describes how instructions change the machine's state using a \texttt
 
 The first line contains the name of the operation, followed by its inputs and their types. The second line declares the beginning of the operation's semantics. Temporary variables are defined using \texttt{let...in} statements. Assignment of state variables requires dereferencing them using \texttt{*} and then assigning them using \texttt{<-}. Logical operations like +, $>>$, etc. are all built into the language, allowing the programmer to focus on the changes to the machine state instead of having to completely re-implement an add instruction.
 
-Ultimately, what the above example aims to do is check whether the given shift value is greater than zero. If it is, it shifts the value in \texttt{Rn}, sets the \texttt{N} flag to the highest bit, and sets \texttt{Rd} to the shifted value; otherwise, it sets the \texttt{N} flag to the highest bit of \texttt{Rn} and sets \texttt{Rd} to \texttt{Rn}. In both cases, the \texttt{Z} flag is set to 1 if the result is 0, and set to 0 otherwise. Note that, compared to this brief statement of pseudocode, the actual Cassiopeia code appears to be much more verbose. This is because Cassiopeia does not yet allow multi-step statements, such as \texttt{\ \ if sh\_int > 0 then}.
+Ultimately, what the above example aims to do is check whether the given shift value is greater than zero. If it is, it shifts the value in \texttt{Rn}, sets the \texttt{N} flag to the highest bit, and sets \texttt{Rd} to the shifted value; otherwise, it sets the \texttt{N} flag to the highest bit of \texttt{Rn} and sets \texttt{Rd} to \texttt{Rn}. In both cases, the \texttt{Z} flag is set to 1 if the result is 0, and set to 0 otherwise. Note that, compared to this brief statement of pseudocode, the actual Cassiopeia code appears to be much more verbose. This is because Cassiopeia does not yet allow multi-step statements, such as \texttt{if sh\_int > 0 then}, where an implicit step calculates the intermediate anonymous boolean \texttt{sh\_int > 0}.
 
-In summary, a Cassiopeia file consists of type definitions, followed by state definitions and machine operation definitions.
+In summary, a Cassiopeia file consists of type definitions, followed by state definitions and then instruction definitions.
 
 There are two useful tools for writing Cassiopeia code; one is a parser that builds an abstract syntax tree out of a machine description, while the other is an interpreter that runs a given Cassiopeia program using a machine description. The machine description testing program delineated in this paper uses the interpreter to run instructions and output the expected state of the machine. The Cassiopeia program that the interpreter uses consists of statements written in the same form as the following example:\\
 
@@ -140,48 +184,41 @@ There are two useful tools for writing Cassiopeia code; one is a parser that bui
 
 \texttt{(ADD R1 R0 0x00001111)}\\
 
-If this program interprets successfully, the state will output that \texttt{R0 = 0x0000abcd}, \texttt{R1 = 0x0000bcde}, and all other registers are equal to \texttt{0x00000000}, assuming that all registers are initially zeroed and an \texttt{ADD} function is correctly defined.
+Assume that all registers and other components of state are initially set to \texttt{0x00000000} and an \texttt{ADD} function is correctly defined. If the above program interprets successfully, the interpreter will output that \texttt{R0 = 0x0000abcd}, \texttt{R1 = 0x0000bcde}, and all other components of state are equal to \texttt{0x00000000}.
 
 \subsection{ARM v6 Architecture}
 
-% FIX ME - add ARM citation
+The ARM has 31 general-purpose registers, all of which are 32 bits wide, the first 16 of which are the user mode registers available to all unprivileged code. The first four registers (R0-R3) hold function call arguments, while R4-R8 do not have any designated purpose. R13 is typically the stack pointer, R14 is the link register which holds the address of the next subroutine call instruction, and R15 is the program counter which is two instructions after the instruction being executed. The ARM also has a current program status register (CPSR), which contains information such as endianness, interrupt masks, and other condition flags. Most importantly for this application, in the highest 4 bits it holds condition code flags representing a \textbf{N}egative, \textbf{Z}ero, \textbf{C}arry, and o\textbf{V}erflow result\cite{ARM}. For this purpose, I model a partial state consisting of the first 9 registers, the four condition code flags, and one 32-bit piece of memory. This restricts which instructions I can model, making instructions like branch impossible to represent.
 
-The ARM has 31 general-purpose registers, all of which are 32 bits wide, the first 16 of which are the user mode registers available to all unprivileged code. The first four registers (R0-R3) hold function call arguments, while R4-R8 do not have any designated purpose. R13 is typically the stack pointer, R14 is the link register which holds the address of the next subroutine call instruction, and R15 is the program counter which is two instructions after the instruction being executed. The ARM also has a current program status register (CPSR), which contains information such as endianness, interrupt masks, and other condition flags. Most importantly for this application, in the highest 4 bits it holds condition code flags representing a \textbf{N}egative, \textbf{Z}ero, \textbf{C}arry, and o\textbf{V}erflow result. For this purpose, I model a partial state consisting of the first 9 registers, the four condition code flags, and one 32-bit piece of memory. This restricts which instructions I can model, making instructions like branch impossible to represent.
+Because ARM is a Reduced Instruction Set Computer (RISC), it has fixed-length instruction fields, making it ideal for modeling in Cassiopeia. Most ARM instructions are capable of setting condition flags by ending the instruction name with an s (i.e. \texttt{adds} instead of \texttt{add}); noteworthy exceptions are the branch instruction and its variants, which never set condition flags, and the compare instruction and its variants, which always set all of the condition flags. As such, modeling the condition flags in Cassiopeia is an important to getting the semantic instruction definitions exactly right.
 
-Because ARM is a Reduced Instruction Set Computer (RISC), it has fixed-length instruction fields, making it ideal for modeling in Cassiopeia. Most ARM instructions are capable of setting condition flags by ending the instruction name with an s (i.e. \texttt{adds} instead of \texttt{add}); noteworthy exceptions are the branch instruction and its variants, which never set condition flags, and the compare instruction and its variants, which always set all of the condition flags. As such, modeling the condition flags in Cassiopeia is important for testing the machine description.
-
-To run one test of a machine description of ARM, the same instruction must be run with the same initial state in both the Cassiopeia interpreter and on the ARM FVP. Only if their final states are the same does the test pass.
+To run one test of a machine description of ARM, the same instruction must be run with the same initial state in both the Cassiopeia interpreter and on an ARM processor. Only if their final states are the same does the test pass.
 
 \subsection{Simulating ARM}
 
-% FIX ME - cite the ARM FVP https://developer.arm.com/products/system-design/fixed-virtual-platforms
-
-The program explained in this paper was not run on the physical ARM processor that the Cassiopeia machine description is written for. Rather, it was run on a fixed virtual platform (FVP) that intends to model the underlying state of an ARM v7 processor and memory. This differs from an emulator, which attempts to mimic the outward behavior of its target without necessarily mimicking the underlying state.
+The program explained in this paper was not run on the physical ARM processor that the Cassiopeia machine description is written for. Rather, it was run on a fixed virtual platform (FVP) that intends to model the underlying state of an ARM v7 processor and memory\cite{FVP}. This differs from an emulator, which attempts to mimic the outward behavior of its target without necessarily mimicking the underlying state. For this application, an emulator that is not a simulator is not sufficient, since the tests rely heavily on extracting that underlying state.
 
 The ARM FVP can easily be booted on an x86 machine running Ubuntu 17.10, and it can share the host's filesystem, making communication between programs on the FVP and the host much simpler. For purposes of this paper, I will continue to treat the ARM FVP as though it accurately represents a real ARM v7 processor, even if it has not been proven to be completely correct.
 
 \subsection{Test Generation Challenges}
 
-Because testing each instruction definition in isolation does not guarantee a correct machine description, we must introduce numerous more instructions to determine that each instruction actually being tested is correct. This leads to the state explosion problem that many testing problems face: as the number of instructions in a program, or the number of definitions in a machine description, increases, the number of tests required to guarantee correctness grows exponentially \cite{Klee}. 
+Because testing each instruction definition in isolation does not guarantee a correct machine description, we must introduce numerous more instructions to determine that each instruction actually being tested is correct. This leads to the state explosion problem that many testing problems face: as the number of instructions in a program, or the number of definitions in a machine description, increases, the number of tests required to guarantee correctness grows exponentially\cite{Klee}.
 
-% FIX ME - cite load/store instructions in ARM
-% FIX ME - add calculations
-However, even when testing instructions just in isolation, the state space is still too big to test exhaustively. Suppose there is a very simple Turing-complete machine description for a 32-bit processor that just consists of load and store. For either of those instructions, the first register can contain any value between 0 and $2^{32} - 1$. The second register can contain any valid address. The third value, an immediate representing the offset from the address stored in the second register, can contain any number of values between the address and the end of valid memory. This means that exhaustively testing the load instruction alone would require insert-number-here tests. To give an idea of what this means to someone trying to test their machine description, running 10000 tests on a computer with a 2.7 GHz processor and 8 GB RAM takes approximately 2 minutes and 30 seconds; running all the tests for the load instruction would then take insert-other-number-here! Even though exhaustive testing in isolation is just as hopeless as exhaustively testing combinations of instructions, I opted to start with a new state for each instruction rather than track the changes in a single state across multiple instructions.
+However, even when testing instructions just in isolation, the state space is still too big to test exhaustively. Suppose there is a very simple Turing-complete machine description for a 32-bit processor that just consists of load and store. For either of those instructions, the first register can contain any value between 0 and $2^{32} - 1$. The second register can contain any valid address. The third value, an immediate representing the offset from the address stored in the second register, can contain any number of values between the address and the end of valid memory\cite{ARM}. Assuming that the size of user-accessible memory is around 4 MB, this means that exhaustively testing the load instruction for two fixed registers alone would require $2^{32} * \sum_{x=0}^{4M-1}x(4M-x) = 2^{32} * 1.067*10^{19} \approx 4.5 * 10^{28}$ tests.
 
-This paper presents a testing methodology for machine descriptions that generates the test suite from scratch. First, the paper describes a design and implementation of a program that can run equivalent instructions on a virtual test machine and a Cassiopeia interpreter and directly compare the resulting states. Second, it details a method of generating randomized tests from scratch and selecting important corner cases to catch common errors. And lastly, it shows that this testing method uncovers bugs in a Cassiopeia machine description of an ARM processor.
+To give an idea of what this means to someone trying to test their machine description, running 10000 tests on a computer with a 2.7 GHz processor and 8 GB RAM takes approximately 2 minutes and 30 seconds; running all the tests for the load instruction for those two predefined registers would then take $2.5 * 4.5 * 10^{24} \approx 1.1 * 10^25$ minutes, or $2.1 * 10^{19}$ years! Even though exhaustive testing in isolation is just as hopeless as exhaustively testing combinations of instructions, I opted to start with a new state for each instruction rather than track the changes in a single state across multiple instructions.
 
 \section{Related Work}
 
 \subsection{Machine Descriptions}
 
-% FIX ME - cite mdesc
-Machine descriptions based on register transfer lists (RTLs) have been frequently used for building retargetable compilers, but RTL languages are typically verbose and difficult for a human reader to understand. Lambda-RTL was developed to make machine descriptions easier to use by adding some human-readable shortcuts, such as allowing implicit fetches and assignment to bitvector slices. Ultimately, the goal of this is that machine descriptions will be more widely used to build other retargetable tools, not just compilers but also simulators, assemblers, linkers, and debuggers.
+Machine descriptions based on register transfer lists (RTLs) have been frequently used for building retargetable compilers, but RTL languages are typically verbose and difficult for a human reader to understand. $\lambda$-RTL was developed to make machine descriptions easier to use by adding some human-readable shortcuts, such as allowing implicit fetches and assignment to bitvector slices. Ultimately, the goal of this is that machine descriptions will be more widely used and reused to build other retargetable tools, not just compilers but also simulators, assemblers, linkers, and debuggers\cite{Mdesc}.
 
-% FIX ME - cite https://github.com/Microsoft/dafny
-% FIX ME - cite Vale
-One interesting application of semantic machine description languages is verification of high-performance cryptographic assembly code. The Vale language was developed for this purpose. A programmer first describes the syntax and semantics of their architecture in Dafny, and then uses Vale to describe how the architecture's state is manipulated. The Vale tool generates an abstract syntax tree (AST), and builds proofs that are verified using a SMT solver. Cassiopeia has some similarities to Vale, since it primarily describes how state is manipulated and also ultimately generates an AST.
+One interesting application of semantic machine description languages is verification of high-performance cryptographic assembly code. The Vale language was developed for this purpose. A programmer first describes the syntax and semantics of their architecture in Dafny, and then uses Vale to describe how the architecture's state is manipulated. The Vale tool generates an abstract syntax tree (AST), and builds proofs that are verified using a SMT solver\cite{Vale}. Cassiopeia has some similarities to Vale, since it primarily describes how state is manipulated and also ultimately generates an AST.
 
-Notably, all these applications assume that the programmer provides an accurate description of their machine.
+Another application of machine description languages is testing individual components of a compiler, such as the architecture specifications used by code generators. GCC has its own RTL specification which describes the semantics of each instruction, but it cannot be assumed to be correct. Whenever a semantic difference is found in the testing process, it must be manually verified that the RTL semantics match the crresponding assembly instruction\cite{Cgo}.
+
+Notably, all these applications assume that the programmer provides an accurate description of their machine or rely on manual verification.
 
 \subsection{Test Generation}
 
@@ -191,12 +228,9 @@ One of the classic methods of generating tests is symbolic execution, which is d
 
 One redeeming factor of KLEE is that it has since been extended to do symbolic execution at the binary level, and various other optimizations can be made for low-level applications. This is particularly relevant for systems applications; for example, if testing that a pagetable works as expected, one would only need to explore a single pagetable location and test a few random values in the table \cite{Path}. This same reasoning can be used to remove redundant tests by reducing the number of times the same instruction is called with different operands.
 
-% FIX ME - cite n-version assembly
-A different approach to testing is fuzzing. First, the target's state is first filled with random data. Next, operation codes are chosen and combined with predefined operand values. The resulting tests are then pruned for redundancy and validity. The actual and expected states are compared at the end of execution of each test case. This test generation is similar to the one used in this paper, though I used a much smaller sample of the machine state. The biggest difference is the objective; others have used fuzzing to discover whether an emulator behaves like the machine it claims to emulate\cite{Emu}, find differences in disassemblers, or find instances in which hardware behavior does not match its online documentation. Many of the solutions to emulator and hardware testing can also be applied to machine description testing.
+A different approach to testing is fuzzing. First, the target's state is first filled with random data. Next, operation codes are chosen and combined with predefined operand values. The resulting tests are then pruned for redundancy and validity. The actual and expected states are compared at the end of execution of each test case. This test generation is similar to the one used in this paper, though I used a much smaller sample of the machine state. The biggest difference is the objective; others have used fuzzing to discover whether an emulator behaves like the machine it claims to emulate\cite{Emu}, find differences in disassemblers\cite{Nvd}, or find instances in which hardware behavior does not match its online documentation. Many of the solutions to emulator, simulator, and hardware testing can also be applied to machine description testing.
 
-% FIX ME - cite checker
-% FIX ME - cite n-version assembly
-One technique that has already been applied to machine description testing is assembly-disassembly. First, a sequence of instructions is encoded in an assembly file and a binary file. An independent assembler is applied to the assembly file to produce a second binary file, or an independent disassembler is applied to the binary to produce a second assembly file. When the resulting two assembly or binary files are compared, it is expected that they will be the same; a difference suggests an error in the machine description. One drawback of this approach is that assemblers and disassemblers frequently have bugs, and other research has been directed toward finding those bugs by comparing the output of disassemblers, so it is not immediately clear whether a found bug originates from the machine description or the assembler or disassembler. This also raises the question of which instructions, inputs, and values should be tested. In this same approach, test generation involves building a tree out of each instruction's possible inputs, selecting the branch that covers the most untested inputs, and then using heuristics to decide on the values of those inputs. This works well for RISC descriptions, but in more complex machines that allow a large number of inputs in their instructions, using a similar method would require implementing and running a complicated integer linear program solver to achieve similar results.
+One technique that has already been applied to machine description testing is assembly-disassembly. First, a sequence of instructions is encoded in an assembly file and a binary file. An independent assembler is applied to the assembly file to produce a second binary file, or an independent disassembler is applied to the binary to produce a second assembly file. When the resulting two assembly or binary files are compared, it is expected that they will be the same; a difference suggests an error in the machine description. One drawback of this approach is that assemblers and disassemblers frequently have bugs, and other research has been directed toward finding those bugs by comparing the output of disassemblers\cite{Nvd}, so it is not immediately clear whether a found bug originates from the machine description or the assembler or disassembler. This also raises the question of which instructions, inputs, and values should be tested. In the same paper that introduced this approach, test generation involved building a tree out of each instruction's possible inputs, selecting the branch that covers the most untested inputs, and then using heuristics to decide on the values of those inputs\cite{Checker}. This works well for RISC descriptions, but in more complex machines that allow a large number of inputs in their instructions, using a similar method would require implementing and running a complicated integer linear program solver to achieve similar results.
 
 \section{Design and Implementation}
 
@@ -211,7 +245,7 @@ One technique that has already been applied to machine description testing is as
 
 \subsection{Bug Analysis}
 
-\subsection{Future/Scalability/etc.}
+\subsection{Things I Haven't Implemented or Did Poorly (do I need this?)}
 
 \section{Conclusion}
 
