@@ -22,13 +22,15 @@
 \documentclass[letterpaper,12pt]{article}
 \usepackage{usenix,epsfig,endnotes}
 \usepackage{courier}
+\usepackage{tikz}
+\usetikzlibrary{arrows,automata, positioning}
 \begin{document}
 
 %make title bold and 14 pt font (Latex default is non-bold, 16 pt)
 \title{\bf \LARGE Generating Tests to Verify Machine Descriptions}
 
 \author{
-{\rm Abby Lyons}\\
+{\rm Abigail Lyons}\\
 {\rm \today}
 }
 \maketitle
@@ -236,10 +238,66 @@ One technique that has already been applied to machine description testing is as
 
 \subsection{Problem Statement}
 
-\subsection{State Implementation}
+My solution to testing machine descriptions is a program which generates initial states and test instructions, initializes the states and runs the instructions on both the Cassiopeia interpreter and the test machine using inline assembly, and compares the resulting states. The resulting states must match completely for the test to pass. Figure 1 is an illustration of this flow of information for a single test. $S, t$ represent an initial state and test instruction from the test generator. $\alpha$ represents a function that translates the initial state into its equivalent on the ARM processor, $\beta$ represents a function that translates the initial state into its equivalent in Cassiopeia, and their inverses undo those functions to get a state in the same form as the initial state. $asm$ and $casp$ are functions that run the given test on translated states to get new translated states.
+
+\begin{figure}
+\centering
+\begin{tikzpicture}[->,>=stealth',shorten >=1pt,auto,node distance=3cm,
+	semithick]
+	\tikzstyle{every state}=[fill=none,draw=black,text=black,minimum width=1.8cm]
+	
+	\node[] (s) {start};
+	\node[state] (0) [right=1cm of s] {$S, t$};
+	\node[state] (1) [above right of=0] {$\alpha(S), t$}; 
+	\node[state] (2) [below right of=0] {$\beta(S), t$}; 
+	\node[state] (3) [right of=1] {$\alpha(S)'$}; 
+	\node[state] (4) [right of=2] {$\beta(S)'$}; 
+	\node[state] (5) [below right of=3] {$S'_a \stackrel{?}{=} S'_b$}; 
+	\node[] (r) [right=1cm of 5] {result};
+	
+	\path
+	(s) edge node {} (0)
+	(0) edge node [left] {$\alpha$} (1)
+	(0) edge node [left] {$\beta$} (2)
+	(1) edge node [above] {$asm$} (3)
+	(2) edge node [below] {$casp$} (4)
+	(3) edge node [left] {$\alpha^{-1}$} (5)
+	(4) edge node [left] {$\beta^{-1}$} (5)
+	(5) edge node {} (r)
+	;
+\end{tikzpicture}
+\caption{logical flow of information through a single test.} \label{fig:M1}
+\end{figure}
+
+The diagram shows that there could be a few different sources of failure should $S'_a$ and $S'_b$ not match. One could be that $\alpha$ is not accurately translating the state, and another could be that $\alpha^{-1}$ is not a perfect inverse of $\alpha$; $\beta$ is also subject to these possible errors. The one that's interesting for purposes of this paper, however, is that $asm$ and $casp$ do not do equivalent operations on the translated states, and the goal of the generated $S$ and $t$ is to uncover these kinds of errors.
+
+\subsection{Implementation}
+
+\begin{figure}
+\centering
+\begin{tikzpicture}[->,>=stealth',shorten >=1pt,auto,node distance=3cm,
+	semithick]
+	\tikzstyle{every state}=[fill=none,draw=black,text=black,minimum width=1.8cm]
+	
+	\node[] (s) {inputs: number of tests, type of test generator, casp file};
+	
+	\node[state] (0) [below=1cm of s] {state generator};
+
+	\node[] (r) [below=1cm of 0] {result};
+	
+	\path
+	(s) edge node {} (0)
+	(0) edge node [left] {$\alpha$} (0)
+	(0) edge node {} (r)
+	;
+\end{tikzpicture}
+\caption{procedure for generating and running one test} \label{fig:M2}
+\end{figure}
+
+\subsubsection{State Implementation}
 % FIX ME - cite synchronized state compar
 
-\subsection{Test Implementation}
+\subsubsection{Test Implementation}
 
 \section{Evaluation}
 
@@ -250,7 +308,7 @@ One technique that has already been applied to machine description testing is as
 \section{Conclusion}
 
 \section{Acknowledgements}
-
+First and foremost, I would like to express my deepest gratitude to my advisors, Professors Margo Seltzer and Stephen Chong, for their patient explanations of topics that I have no prior experience in, not to mention their immensely helpful feedback on my ideas, code, and writing. I would also like to thank everyone at Harvard working on the PRINCESS project for their support and camaraderie, and building the tools necessary for me to complete this research. And lastly, I'd like to personally thank Timothy for four remarkable years of friendship, and my mother, father, and brother for their lifelong support of my studies.
 
 {\footnotesize \bibliographystyle{acm}
 \bibliography{sample}}
