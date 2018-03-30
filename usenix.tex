@@ -63,7 +63,7 @@ Writing a complete machine description is challenging--not as time-consuming as 
 
 \subsection{Contributions}
 
-This paper presents a testing methodology for machine descriptions that generates the test suite from scratch. First, it describes a design and implementation of a program that can run equivalent instructions on a virtual test machine and a Cassiopeia interpreter and directly compare the resulting states. Second, it details a method of generating randomized tests from scratch, pruning the random tests for validity, and selecting important corner cases to catch common errors. And lastly, it shows that this testing method reveals programmer errors in a Cassiopeia machine description of an ARM processor.
+This paper presents a testing methodology for machine descriptions that generates the test suite from scratch. First, it describes a design and implementation of a program that can initialize equivalent states and run equivalent instructions on a virtual test machine and a machine description language interpreter and directly compare the resulting states. Second, it details a method of generating randomized tests from scratch, pruning the tests for validity, and selecting important corner cases to catch common errors. And lastly, it shows that this testing method reveals programmer errors in a machine description of an ARM processor.
 
 The remainder of this paper is structured as follows:
 
@@ -223,7 +223,7 @@ One technique that has already been applied to machine description testing is as
 
 \subsection{Problem Statement}
 
-My solution to testing machine descriptions is a program which generates initial states and test instructions, initializes the states and runs the instructions on both the Cassiopeia interpreter and the test machine using inline assembly, and compares the resulting states. The resulting states must match completely for the test to pass. Figure 1 is an illustration of this flow of information for a single test. $S, t$ represent an initial state and test instruction from the test generator. $\alpha$ represents a function that translates the initial abstract state into its equivalent on the ARM processor, $\beta$ represents a function that translates the initial abstract state into its equivalent in Cassiopeia, and their inverses undo those functions to get new abstract states in the same form as the initial state. $asm$ and $casp$ are functions that run the given test on translated states to get new translated states.
+My solution to testing machine descriptions is a program which generates initial states and test instructions, initializes the states and runs the instructions on both the test machine using inline assembly and the Cassiopeia interpreter, and compares the resulting states. The resulting states must match completely for the test to pass. Figure 1 is an illustration of this flow of information for a single test. $S, t$ represent an initial state and test instruction from the test generator. $\alpha$ represents a function that translates the initial abstract state into its equivalent on the ARM processor, $\beta$ represents a function that translates the initial abstract state into its equivalent in Cassiopeia, and their inverses undo those functions to get new abstract states in the same form as the initial state. $asm$ and $casp$ are functions that run the given test on translated states to get new translated states.
 
 \begin{figure}
 \centering
@@ -254,11 +254,11 @@ My solution to testing machine descriptions is a program which generates initial
 \caption{logical flow of information through a single test.} \label{fig:M1}
 \end{figure}
 
-The diagram shows that there could be a few different sources of failure should $S'_a$ and $S'_b$ not match. One could be that $\alpha$ is not accurately translating the state, and another could be that $\alpha^{-1}$ is not a perfect inverse of $\alpha$; $\beta$ is also subject to these possible errors. The one that's interesting for purposes of this paper, however, is that $asm$ and $casp$ do not do equivalent operations on the translated states, and the goal of the generated $S$ and $t$ is to uncover these kinds of errors.
+The diagram shows that there could be a few different sources of failure should $S'_a$ and $S'_b$ not match. One could be that $\alpha$ is not accurately translating the state, and another could be that $\alpha^{-1}$ is not a perfect inverse of $\alpha$; $\beta$ is also subject to these possible errors. The one that's interesting for purposes of this paper, however, is that $asm$ and $casp$ do not do equivalent operations on the translated states, and the goal of the generated test states and instructions are to uncover these kinds of errors.
 
 \subsection{Implementation}
 
-Figure 2 is a road map for all components of the testing program, from the initial state generation step to the final test result, with the edges showing the information being passed from one part to the next. Completely machine-independent components are filled in crimson with white text.
+Figure 2 is a road map for all components of the testing program, from the initial state generation step to the final test result, with the edges showing the information being passed from one part to the next. Completely machine-independent components are filled in crimson with white text, which is important to take note of when reusing code to test descriptions of other machines.
 
 \begin{figure}
 \centering
@@ -303,7 +303,7 @@ Next, the test generator picks an instruction, input registers, and immediate va
 
 Then, the program splits off into two halves which can be run in any order: the hardware test and the Cassiopeia test. They can theoretically be run in parallel, but the ARM FVP does not support multithreaded programs or the fork system call, so I opted to run the hardware portion first. 
 
-\subsubsection{Processor testing}
+\subsubsection{Processor Test Execution}
 
 The state translation to assembly consists primarily of forcing state variables to their respective registers using statements like the following line, which requires that all operations on the 0th register in the abstract state take place on the 0th register of the processor.
 
@@ -343,17 +343,17 @@ Next, the test is run via a volatile assembly instruction. Here's what an exampl
             
 \texttt{);}
 
-The first line declares that the following code is in an assembly language, and the volatile keyword disables certain optimizations from taking place, ensuring that the processor will behave exactly as specified. The processor's behavior was additionally verified using the DS-5 Debugger\cite{Debug} to examine the processor state as the instructions were run. The following \texttt{mov} statements are no-ops that set the values of those registers to those in the abstract state's register variables. The \texttt{msr} instruction loads a value into the current program status register. Next, the actual test instruction is run, in this case an add instruction that adds register 1's value with the immediate and stores the result in register 0. The \texttt{mrs} instruction is the opposite of \texttt{msr}--it extracts the value of the current program status register. The first colon precedes a list of output operands; each variable is given a unique name in the assembly instruction, followed by \texttt{"=r"}, and then the variable's name in the surrounding C program. (Note that \texttt{instr} is a struct for storing an assembly test, and \texttt{imm} represents the immediate value passed into the instruction, if applicable.) The second colon is similar, but instead begins a list of input operands. Lastly, the clobber list at the end of the instruction states which registers need to be restored after the inline assembly portion has finished running.
+The first line declares that the following code is in an assembly language, and the volatile keyword disables certain optimizations from taking place, ensuring that the processor will behave exactly as specified. The processor's behavior was additionally verified using the DS-5 Debugger\cite{Debug} to examine the processor state as the instructions were run. The following \texttt{mov} statements are no-ops that set the values of those registers to those in the abstract state's register variables. The \texttt{msr} instruction loads a value into the current program status register. Next, the actual test instruction is run, in this case an \texttt{add} instruction that adds register 1's value with the immediate and stores the result in register 0. The \texttt{mrs} instruction is the opposite of \texttt{msr}--it extracts the value of the current program status register. The first colon precedes a list of output operands; each variable is given a unique name in the assembly instruction, followed by \texttt{"=r"}, and then the variable's name in the surrounding C program. (Note that \texttt{instr} is a struct for storing an assembly test, and \texttt{imm} represents the immediate value passed into the instruction, if applicable.) The second colon is similar, but instead begins a list of input operands. Lastly, the clobber list at the end of the instruction states which registers need to be restored after the inline assembly portion has finished running.
 
-These inline assembly instructions are completely static, so a different \texttt{asm volatile} call must be written for each combination of instruction, destination register, and source register. This quickly becomes too much code to write by hand, so I instead wrote a Python script that generates most of this code for me.
+These inline assembly instructions cannot be written to dynamically select registers, so a different \texttt{asm volatile} call must be written for each combination of instruction, destination register, and source register. This quickly becomes too much code to write by hand, so I instead wrote a Python script that generates most of this code for me.
 
 The results from running the test can easily be translated into an abstract state by setting all of the abstract state's register variables to the register variables that were initialized before:
 
 \texttt{s->regs[0] = r0\_;}
 
-Special state components like the CPSR are handled separately, since the Cassiopeia interpreter does not handle finicky processor components like the program counter in the same way that the hardware does. In this case, since I only modeled the four uppermost bits, I simply applied a bitmask.
+Special state components like the CPSR are handled separately, since the Cassiopeia interpreter does not handle finicky processor components like the program counter in the same way that the hardware does. In this case, since I only modeled the four uppermost bits, I simply applied a bitmask to zero out the rest of that register's contents.
 
-\subsubsection{Cassiopeia testing}
+\subsubsection{Cassiopeia Test Execution}
 
 The Cassiopeia interpreter expects a special program file as an input, and it outputs a file detailing every step that was taken in producing the final state as well as the final state itself. As such, the abstract initial state must be translated and written into a program file that's readable by the interpreter. The Cassiopeia files written for these tests include initial values for each part of the state. However, they also include special \texttt{SET} operations that, unlike other operations, are meant just for dynamically initializing the state and do not actual model the processor. These \texttt{SET} instructions are written to the program like such:
 
@@ -369,7 +369,7 @@ The Cassiopeia interpreter is invoked using the following line, where arm.casp i
 
 The output file out.txt is then read, checking for particular named pieces of state near the end of the output. When a CPSR bit is found, the individual bit corresponding to it in the abstract state is set to equal that bit. Similarly, when a register is found, its corresponding register is set to equal the value outputted by the interpreter. At the end, the remaining part of the state's CPSR is zeroed out to avoid any arbitrary conflicts between the unmodelled portions of the CPSR in test result comparison.
 
-\subsubsection{Test result comparison}
+\subsubsection{Test Result Comparison}
 
 Once both final states are received, they are simply compared using a call to \texttt{memcmp}. If a difference is found between the states, both states are printed out side-by-side with four bytes on each line; the programmer must then interpret the output based on the layout of the state struct.
 
