@@ -23,6 +23,7 @@
 \usepackage{usenix,epsfig,endnotes}
 \usepackage{courier}
 \usepackage{tikz}
+\definecolor{crimson}{RGB}{201,0,22}
 \usetikzlibrary{arrows,automata, positioning}
 \begin{document}
 
@@ -116,7 +117,7 @@ This is less obviously wrong, because running one add instruction in isolation w
 \subsection{Cassiopeia}
 
 % FIX ME - figure out how to cite Cassiopeia documentation?
-Cassiopeia is a new semantic machine description language, where a description consists of an enumeration of a machine's state and an implementation of operations in terms of the machine's state. For any given processor, much of this information can be found in its documentation to varying degrees of accuracy. Someone who wants to use Cassiopeia would then need to manually translate the documentation into Cassiopeia code.
+Cassiopeia is a new semantic machine description language developed by the PRINCESS Evolving Operating Systems Project at Harvard\cite{Princess}. A description in this language consists of an enumeration of a machine's state and an implementation of operations in terms of the machine's state. For any given processor, much of this information can be found in its documentation to varying degrees of accuracy. Someone who wants to use Cassiopeia would then need to manually translate the documentation into Cassiopeia code.
 
 Cassiopeia has a few primitive types, including a length n bitvector, logical integer, logical boolean, pointer, and others. All other types used in the machine description must be defined by the user in terms of already existing types. Following are some examples of these type definitions; the first line creates a type \texttt{word} that is 32 bits long, while the second line creates a type \texttt{register} that is a pointer to a word, or a length-32 bitvector.\\
 
@@ -230,7 +231,7 @@ One of the classic methods of generating tests is symbolic execution, which is d
 
 One redeeming factor of KLEE is that it has since been extended to do symbolic execution at the binary level, and various other optimizations can be made for low-level applications. This is particularly relevant for systems applications; for example, if testing that a pagetable works as expected, one would only need to explore a single pagetable location and test a few random values in the table \cite{Path}. This same reasoning can be used to remove redundant tests by reducing the number of times the same instruction is called with different operands.
 
-A different approach to testing is fuzzing. First, the target's state is first filled with random data. Next, operation codes are chosen and combined with predefined operand values. The resulting tests are then pruned for redundancy and validity. The actual and expected states are compared at the end of execution of each test case. This test generation is similar to the one used in this paper, though I used a much smaller sample of the machine state. The biggest difference is the objective; others have used fuzzing to discover whether an emulator behaves like the machine it claims to emulate\cite{Emu}, find differences in disassemblers\cite{Nvd}, or find instances in which hardware behavior does not match its online documentation. Many of the solutions to emulator, simulator, and hardware testing can also be applied to machine description testing.
+A different approach to testing is fuzzing. First, the target's state is first filled with random data. Next, operation codes are chosen and combined with predefined operand values. The resulting tests are then pruned for redundancy and validity. The actual and expected states are compared at the end of execution of each test case\cite{Statecmp}. This test generation is similar to the one used in this paper, though I used a much smaller sample of the machine state. The biggest difference is the objective; others have used fuzzing to discover whether an emulator behaves like the machine it claims to emulate\cite{Emu}, find differences in disassemblers\cite{Nvd}, or find instances in which hardware behavior does not match its online documentation. Many of the solutions to emulator, simulator, and hardware testing can also be applied to machine description testing.
 
 One technique that has already been applied to machine description testing is assembly-disassembly. First, a sequence of instructions is encoded in an assembly file and a binary file. An independent assembler is applied to the assembly file to produce a second binary file, or an independent disassembler is applied to the binary to produce a second assembly file. When the resulting two assembly or binary files are compared, it is expected that they will be the same; a difference suggests an error in the machine description. One drawback of this approach is that assemblers and disassemblers frequently have bugs, and other research has been directed toward finding those bugs by comparing the output of disassemblers\cite{Nvd}, so it is not immediately clear whether a found bug originates from the machine description or the assembler or disassembler. This also raises the question of which instructions, inputs, and values should be tested. In the same paper that introduced this approach, test generation involved building a tree out of each instruction's possible inputs, selecting the branch that covers the most untested inputs, and then using heuristics to decide on the values of those inputs\cite{Checker}. This works well for RISC descriptions, but in more complex machines that allow a large number of inputs in their instructions, using a similar method would require implementing and running a complicated integer linear program solver to achieve similar results.
 
@@ -238,7 +239,7 @@ One technique that has already been applied to machine description testing is as
 
 \subsection{Problem Statement}
 
-My solution to testing machine descriptions is a program which generates initial states and test instructions, initializes the states and runs the instructions on both the Cassiopeia interpreter and the test machine using inline assembly, and compares the resulting states. The resulting states must match completely for the test to pass. Figure 1 is an illustration of this flow of information for a single test. $S, t$ represent an initial state and test instruction from the test generator. $\alpha$ represents a function that translates the initial state into its equivalent on the ARM processor, $\beta$ represents a function that translates the initial state into its equivalent in Cassiopeia, and their inverses undo those functions to get a state in the same form as the initial state. $asm$ and $casp$ are functions that run the given test on translated states to get new translated states.
+My solution to testing machine descriptions is a program which generates initial states and test instructions, initializes the states and runs the instructions on both the Cassiopeia interpreter and the test machine using inline assembly, and compares the resulting states. The resulting states must match completely for the test to pass. Figure 1 is an illustration of this flow of information for a single test. $S, t$ represent an initial state and test instruction from the test generator. $\alpha$ represents a function that translates the initial abstract state into its equivalent on the ARM processor, $\beta$ represents a function that translates the initial abstract state into its equivalent in Cassiopeia, and their inverses undo those functions to get new abstract states in the same form as the initial state. $asm$ and $casp$ are functions that run the given test on translated states to get new translated states.
 
 \begin{figure}
 \centering
@@ -247,9 +248,9 @@ My solution to testing machine descriptions is a program which generates initial
 	\tikzstyle{every state}=[fill=none,draw=black,text=black,minimum width=1.8cm]
 	
 	\node[] (s) {start};
-	\node[state] (0) [right=1cm of s] {$S, t$};
-	\node[state] (1) [above right of=0] {$\alpha(S), t$}; 
-	\node[state] (2) [below right of=0] {$\beta(S), t$}; 
+	\node[state] (0) [right=1cm of s] {$S,t$};
+	\node[state] (1) [above right of=0] {$\alpha(S),t$}; 
+	\node[state] (2) [below right of=0] {$\beta(S),t$}; 
 	\node[state] (3) [right of=1] {$\alpha(S)'$}; 
 	\node[state] (4) [right of=2] {$\beta(S)'$}; 
 	\node[state] (5) [below right of=3] {$S'_a \stackrel{?}{=} S'_b$}; 
@@ -273,39 +274,144 @@ The diagram shows that there could be a few different sources of failure should 
 
 \subsection{Implementation}
 
+Figure 2 is a road map for all components of the testing program, from the initial state generation step to the final test result, with the edges showing the information being passed from one part to the next. Completely machine-independent components are filled in crimson with white text.
+
 \begin{figure}
 \centering
 \begin{tikzpicture}[->,>=stealth',shorten >=1pt,auto,node distance=3cm,
 	semithick]
-	\tikzstyle{every state}=[fill=none,draw=black,text=black,minimum width=1.8cm]
+	\tikzstyle{every state}=[fill=none,draw=black,text=black,minimum width=1.6cm, text width=1.6cm, align=center]
 	
 	\node[] (s) {inputs: number of tests, type of test generator, casp file};
-	
-	\node[state] (0) [below=1cm of s] {state generator};
-
-	\node[] (r) [below=1cm of 0] {result};
+	\node[state,fill=crimson] (0) [below=0.65cm of s] {\textcolor{white}{state generator}};
+    \node[state] (1) [below=0.65cm of 0] {test generator};
+    \node[state] (2) [below left=1cm of 1] {asm translator};
+    \node[state] (3) [below right=1cm of 1] {casp translator};
+    \node[state] (4) [below=0.65cm of 2] {asm runner};
+    \node[state,fill=crimson] (5) [below=0.65cm of 3] {\textcolor{white}{casp runner}};
+    \node[state] (6) [below=0.65cm of 4] {asm detranslator};
+    \node[state] (7) [below=0.65cm of 5] {casp detranslator};
+    \node[state,fill=crimson] (8) [below left=1cm of 7] {\textcolor{white}{state comparer}};
+	\node[] (r) [below=0.65cm of 8] {results: boolean, state diff};
 	
 	\path
 	(s) edge node {} (0)
-	(0) edge node [left] {$\alpha$} (0)
-	(0) edge node {} (r)
+	(0) edge node {$S$} (1)
+	(1) edge node {$S,t$} (2)
+	(1) edge node {$S,t$} (3)
+	(2) edge node {$\alpha(S),t$} (4)
+	(4) edge node {$\alpha(S)'$} (6)
+	(6) edge node {$S'_a$} (8)
+	(3) edge node {$\beta(S),t$} (5)
+	(5) edge node {$\beta(S)'$} (7)
+	(7) edge node {$S'_b$} (8)
+	(8) edge node {} (r)
 	;
 \end{tikzpicture}
 \caption{procedure for generating and running one test} \label{fig:M2}
 \end{figure}
 
-\subsubsection{State Implementation}
-% FIX ME - cite synchronized state compar
+\subsubsection{State and Test Generation}
 
-\subsubsection{Test Implementation}
+State itself is represented in the program as a C struct, containing an array of registers, a block of memory, and other components of processor state that are being measured. In the case of the ARM processor, I modeled 32-bit general registers 0 through 8, a single 32-bit memory location, and a 32-bit current program status register. Regardless of the individual parts that make up the state, the state generator fills the entire initial state struct with random bytes.
+
+Next, the test generator picks an instruction, input registers, and immediate values to make up the test. I implemented two different test generators: one simply generates random instructions and picks random registers, with no memory of what tests were run before it. The other test generator picks instructions in a fixed order and sets certain requirements on its arguments. For example, it may require that all inputs be set to zero, or that two inputs for an ADD instruction have their highest bit set to deliberately cause an overflow. This test generator still picks registers at random, since it is unlikely that a bug lies within one specific register. (However, if all registers were being included in the abstract state representation, this should be adjusted so tests run on each register at least once.) Both test generators have the capability of modifying the initial state to fulfill processor requirements; for example, the ARM v6 documentation requires that in logical shift operations, the amount to be shifted must be between 0 and 31, so the third argument for those instructions must be changed. The random test generator always maintains the test's randomness, so even when part of the state is altered it takes on a random value within the valid range.
+
+Then, the program splits off into two halves which can be run in any order: the hardware test and the Cassiopeia test. They can theoretically be run in parallel, but the ARM FVP does not support multithreaded programs or the fork system call, so I opted to run the hardware portion first. 
+
+\subsubsection{Processor testing}
+
+The state translation to assembly consists primarily of forcing state variables to their respective registers using statements like the following line, which requires that all operations on the 0th register in the abstract state take place on the 0th register of the processor.
+
+\texttt{register uint32\_t r0\_ asm("r0") = s->regs[0];}
+
+Next, the test is run via a volatile assembly instruction. Here's what an example instruction looks like:
+
+\texttt{asm volatile(}
+
+\texttt{\ "mov \%[reg0],\%[reg0]\textbackslash n\textbackslash t"}
+
+\texttt{\ "mov \%[reg1],\%[reg1]\textbackslash n\textbackslash t"}
+
+\texttt{\ "mov \%[reg2],\%[reg2]\textbackslash n\textbackslash t"}
+
+\texttt{...}
+
+\texttt{\ "msr cpsr,\%[f1]\textbackslash n\textbackslash t"}
+
+\texttt{\ "adds \%[reg0],\%[reg1],\%[imm]\textbackslash n\textbackslash t"}
+
+\texttt{\ "mrs \%[f1],cpsr\textbackslash n\textbackslash t"}
+                
+\texttt{\ : [f1] "=r" (s->cpsr), [reg0] "=r" (r0\_),}
+
+\texttt{\ \ \ [reg1] "=r" (r1\_), [reg2] "=r" (r2\_),}
+
+\texttt{...}
+
+\texttt{\ : [imm] "r" (instr->imm), [reg0] "r" (r0\_),}
+
+\texttt{\ \ \ [reg1] "r" (r1\_), [reg2] "r" (r2\_),}
+
+\texttt{...}
+
+\texttt{\ : "r0", "r1", "r2", "r3", ...}
+            
+\texttt{);}
+
+The first line declares that the following code is in an assembly language, and the volatile keyword disables certain optimizations from taking place, ensuring that the processor will behave exactly as specified. The processor's behavior was additionally verified using the DS-5 Debugger\cite{Debug} to examine the processor state as the instructions were run. The following \texttt{mov} statements are no-ops that set the values of those registers to those in the abstract state's register variables. The \texttt{msr} instruction loads a value into the current program status register. Next, the actual test instruction is run, in this case an add instruction that adds register 1's value with the immediate and stores the result in register 0. The \texttt{mrs} instruction is the opposite of \texttt{msr}--it extracts the value of the current program status register. The first colon precedes a list of output operands; each variable is given a unique name in the assembly instruction, followed by \texttt{"=r"}, and then the variable's name in the surrounding C program. (Note that \texttt{instr} is a struct for storing an assembly test, and \texttt{imm} represents the immediate value passed into the instruction, if applicable.) The second colon is similar, but instead begins a list of input operands. Lastly, the clobber list at the end of the instruction states which registers need to be restored after the inline assembly portion has finished running.
+
+These inline assembly instructions are completely static, so a different \texttt{asm volatile} call must be written for each combination of instruction, destination register, and source register. This quickly becomes too much code to write by hand, so I instead wrote a Python script that generates most of this code for me.
+
+The results from running the test can easily be translated into an abstract state by setting all of the abstract state's register variables to the register variables that were initialized before:
+
+\texttt{s->regs[0] = r0\_;}
+
+Special state components like the CPSR are handled separately, since the Cassiopeia interpreter does not handle finicky processor components like the program counter in the same way that the hardware does. In this case, since I only modeled the four uppermost bits, I simply applied a bitmask.
+
+\subsubsection{Cassiopeia testing}
+
+The Cassiopeia interpreter expects a special program file as an input, and it outputs a file detailing every step that was taken in producing the final state as well as the final state itself. As such, the abstract initial state must be translated and written into a program file that's readable by the interpreter. The Cassiopeia files written for these tests include initial values for each part of the state. However, they also include special \texttt{SET} operations that, unlike other operations, are meant just for dynamically initializing the state and do not actual model the processor. These \texttt{SET} instructions are written to the program like such:
+
+\texttt{sprintf(buf, "(SETREG R\%d 0x\%08x)\textbackslash n", i, s->regs[i]);}
+
+\texttt{i} in this case represents the register number being set. The buffer \texttt{buf} is then written to the output file. After all Cassiopeia state components are set to equal the initial state values, the instruction being tested is written to the end of the file. Reusing the assembly instruction from above, the correct Cassiopeia equivalent would be:
+
+\texttt{sprintf(buf, "(ADD R0 R1 0x\%08x)\textbackslash n", instr->imm);}
+
+The Cassiopeia interpreter is invoked using the following line, where arm.casp is the machine description, test.prog is the test program that was just written, and out.txt is the file to be parsed to find the final state.
+
+\texttt{system("./interp arm.casp test.prog > out.txt\textbackslash n");}
+
+The output file out.txt is then read, checking for particular named pieces of state near the end of the output. When a CPSR bit is found, the individual bit corresponding to it in the abstract state is set to equal that bit. Similarly, when a register is found, its corresponding register is set to equal the value outputted by the interpreter. At the end, the remaining part of the state's CPSR is zeroed out to avoid any arbitrary conflicts between the unmodelled portions of the CPSR in test result comparison.
+
+\subsubsection{Test result comparison}
+
+Once both final states are received, they are simply compared using a call to \texttt{memcmp}. If a difference is found between the states, both states are printed out side-by-side with four bytes on each line; the programmer must then interpret the output based on the layout of the state struct.
 
 \section{Evaluation}
 
+The test program detailed above was run with a simplified ARM v6 machine description, which modeled registers 0 through 8, the upper 4 bits of CPSR, and four bytes of memory, and implemented the unsigned add, and, logical shift left, logical shift right, load, and store instructions. The test program was run on an ARM v7 FVP, and anywhere between 30 and 10000 tests were run in each iteration.
+
 \subsection{Bug Analysis}
 
-\subsection{Things I Haven't Implemented or Did Poorly (do I need this?)}
+Many inconsistencies between the machine description and the hardware were found from simply running 50 completely random tests. The most common errors were inconsistencies in the CPSR flags, which were found in the add, shift left, and shift right instructions. These tests revealed that the C and V flags were sometimes being set in the Cassiopeia descriptions, but were never set by the processor. In addition, shift left and shift right were failing to set the N flag to the highest bit of the result.
+
+The addition of fixed tests uncovered a few more inconsistencies. These tests covered basic corner cases for all instructions, such as setting the operand values to zero to ensure the zero flag was being set correctly, or deliberately setting the operands to be high or low to cause various behaviors like integer overflow, a zero result from nonzero operands, etc. One error that this testing method found was the behavior of shift right when the shift value is 0; the ARM v6 manual states that the result should then also be 0, but the FVP treated the shift right by 0 as a no-op other than setting the appropriate flags. One other error that was found was that setting the memory to equal zero in the load and store instructions would throw an error in the Cassiopeia interpreter, since a type error in the description caused it to interpret zero as an abstract value. 
+
+Overall, there are a few different sources of these errors: an imperfect version match between the ARM documentation and the ARM FVP, misread instruction implementations in the documentation or poor organization of said documentation, and incorrect Cassiopeia code that halts the interpreter when certain branches are taken. All of these errors can realistically occur when writing machine descriptions.
+
+\subsection{Future Work}
+
+The program described above can be modified to be more programmer-friendly. Figure 2 demonstrates that most parts of the testing program built are machine-dependent, so a significant portion will need to be rewritten to test machine descriptions for other processors. As the problem is currently specified, many of these machine-dependent components are necessarily machine-dependent; for example, the test generator must be implemented with prior information about the kinds of corner cases that would be useful to cover for each instruction. This become particularly complicated when considering that more complicated architectures like x86-64 have variable numbers of arguments, which not only increases the number of test cases to cover and pieces inline assembly to write and compile, but also makes it difficult to know how large of a test state to generate. However, rethinking the infrastructure or the details of the test generator could reduce the number of machine-dependent components.
+
+TODO: Invalid test cases
+
+Even though this program found many bugs in a small machine description, it is currently unknown how many other bugs may still be hiding. Other testing methods may be even more effective at uncovering bugs. TODO: describe other testing methods that could be implemented here
 
 \section{Conclusion}
+
+TODO: write a summary of the paper
 
 \section{Acknowledgements}
 First and foremost, I would like to express my deepest gratitude to my advisors, Professors Margo Seltzer and Stephen Chong, for their patient explanations of topics that I have no prior experience in, not to mention their immensely helpful feedback on my ideas, code, and writing. I would also like to thank everyone at Harvard working on the PRINCESS project for their support and camaraderie, and building the tools necessary for me to complete this research. And lastly, I'd like to personally thank Timothy for four remarkable years of friendship, and my mother, father, and brother for their lifelong support of my studies.
